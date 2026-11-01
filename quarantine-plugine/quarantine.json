@@ -1,0 +1,5 @@
+{
+  "items": {
+    "1": "quarantine-plugine/test_for_plugin.py::TestPlugin::test_flaky_quarantined"
+  }
+}

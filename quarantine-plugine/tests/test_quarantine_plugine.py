@@ -1,0 +1,184 @@
+from pathlib import Path
+
+import pytest
+
+DEFAULT_TESTS = """
+    from random import randint
+
+    import pytest
+
+    def test_stable():
+        pass
+
+    def test_failed():
+        pytest.fail("Incorrect result")
+
+    def test_flaky_quarantined():
+        pytest.fail("Incorrect result")
+    """
+
+PARAMETRIZED_TESTS = """
+    import pytest
+
+    @pytest.mark.parametrize("case", ["a", "b"])
+    def test_p(case):
+        pytest.fail("Incorrect result")
+    """
+
+
+def _read_real_conftest():
+    path_to_conftest = Path(__file__).resolve().parent.parent / "conftest.py"
+    return path_to_conftest.read_text("utf-8")
+
+
+@pytest.fixture
+def make_quarantine_file(pytester, request):
+    """Create quarantine.txt file"""
+    func_name = request.node.originalname
+
+    def _wrap(test_name: str | None = None):
+        name = test_name or "test_flaky_quarantined"
+        pytester.makefile(
+            ".txt",
+            quarantine=f"{func_name}.py::" + name,
+        )
+
+    return _wrap
+
+
+def test_quarantined(pytester, make_quarantine_file):
+    """Make sure that our plugin works."""
+
+    pytester.makeconftest(_read_real_conftest())
+    make_quarantine_file()
+    # Create a temporary test file
+    pytester.makepyfile(DEFAULT_TESTS)
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, xfailed=1, failed=1)
+
+
+def test_outcomes_code(pytester, make_quarantine_file):
+
+    pytester.makeconftest(_read_real_conftest())
+    make_quarantine_file()
+    # Create a temporary test file
+    pytester.makepyfile(
+        """
+        from random import randint
+
+        import pytest
+
+        def test_stable():
+            pass
+
+        def test_flaky_quarantined():
+            pass
+        """
+    )
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, xpassed=1)
+    assert result.ret == pytest.ExitCode.OK
+
+def test_passed_quarantined(pytester, make_quarantine_file):
+
+    pytester.makeconftest(_read_real_conftest())
+    make_quarantine_file()
+    # Create a temporary test file
+    pytester.makepyfile(
+        """
+        from random import randint
+
+        import pytest
+
+        def test_stable():
+            pass
+
+        def test_flaky_quarantined():
+            pytest.fail("Incorrect result")
+        """
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, xfailed=1)
+    assert result.ret == pytest.ExitCode.OK
+
+def test_empty_quarantined(pytester):
+
+    pytester.makeconftest(_read_real_conftest())
+    # Make empty qurantined file
+    pytester.makefile(
+        ".txt",
+        quarantine="",
+    )
+    # Create a temporary test file
+    pytester.makepyfile(DEFAULT_TESTS)
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, xfailed=0, failed=2)
+
+
+def test_no_quarantined_file(pytester):
+
+    pytester.makeconftest(_read_real_conftest())
+    # Create a temporary test file
+    pytester.makepyfile(DEFAULT_TESTS)
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, xfailed=0, failed=2)
+
+
+def test_parametrized_base_quarantined(pytester, make_quarantine_file):
+    """test_p в файле накрывает все параметры: test_p[a] и test_p[b]."""
+
+    pytester.makeconftest(_read_real_conftest())
+    make_quarantine_file("test_p")
+    pytester.makepyfile(PARAMETRIZED_TESTS)
+
+    result = pytester.runpytest()
+    result.assert_outcomes(xfailed=2)
+
+
+def test_parametrized_single_case_quarantined(pytester, make_quarantine_file):
+    """test_p[a] в файле накрывает только свой параметр."""
+
+    pytester.makeconftest(_read_real_conftest())
+    make_quarantine_file("test_p[a]")
+    pytester.makepyfile(PARAMETRIZED_TESTS)
+
+    result = pytester.runpytest()
+    result.assert_outcomes(xfailed=1, failed=1)
+
+
+def test_unknown_nodeid_warns(pytester, make_quarantine_file):
+    """Файл собран, а теста в нём нет — опечатка или тест удалён: предупреждение."""
+
+    pytester.makeconftest(_read_real_conftest())
+    make_quarantine_file("test_typo")
+    pytester.makepyfile(
+        """
+        def test_stable():
+            pass
+        """
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1, warnings=1)
+    result.stdout.fnmatch_lines(["*quarantine: *::test_typo не найден*"])
+
+
+def test_not_collected_file_no_warning(pytester):
+    """Тест из другого файла не выбран в этом запуске — молчим."""
+
+    pytester.makeconftest(_read_real_conftest())
+    pytester.makefile(".txt", quarantine="test_other.py::test_flaky")
+    pytester.makepyfile(
+        """
+        def test_stable():
+            pass
+        """
+    )
+
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=1)
+    result.stdout.no_fnmatch_line("*не найден*")
