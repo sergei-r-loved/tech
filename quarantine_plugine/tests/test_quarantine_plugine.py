@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,50 @@ PARAMETRIZED_TESTS = """
     def test_p(case):
         pytest.fail("Incorrect result")
     """
+
+TESTS_FOR_REPORT = [
+    """
+    def test_stable():
+        pass
+    """,
+    """
+    import pytest
+    @pytest.fixture
+    def failed_fixture():
+        raise RuntimeError("стенд недоступен")
+
+    def test_stable(failed_fixture):
+        pass
+    """,
+    """
+    import pytest
+    @pytest.mark.skip()
+    def test_stable():
+        pass
+    """,
+    """
+    import pytest
+    @pytest.fixture
+    def failed_fixture():
+        raise RuntimeError("стенд недоступен")
+
+    def test_stable(failed_fixture):
+        pass
+    """,
+    """
+    import pytest
+    def test_stable():
+        pytest.skip()
+    """,
+    """
+    def test_stable():
+        raise RuntimeError("стенд недоступен")
+    """,
+    """
+    def test_stable():
+        pass
+    """,
+]
 
 
 def _read_real_conftest():
@@ -80,6 +125,7 @@ def test_outcomes_code(pytester, make_quarantine_file):
     result.assert_outcomes(passed=1, xpassed=1)
     assert result.ret == pytest.ExitCode.OK
 
+
 def test_passed_quarantined(pytester, make_quarantine_file):
 
     pytester.makeconftest(_read_real_conftest())
@@ -102,6 +148,7 @@ def test_passed_quarantined(pytester, make_quarantine_file):
     result = pytester.runpytest()
     result.assert_outcomes(passed=1, xfailed=1)
     assert result.ret == pytest.ExitCode.OK
+
 
 def test_empty_quarantined(pytester):
 
@@ -182,3 +229,52 @@ def test_not_collected_file_no_warning(pytester):
     result = pytester.runpytest()
     result.assert_outcomes(passed=1)
     result.stdout.no_fnmatch_line("*не найден*")
+
+
+# параметризируем, по таблице, читаем файл смотрим что там наши тесты
+@pytest.mark.parametrize(
+    "test, in_quarantine, status, quarantined_flag",
+    [
+        pytest.param(TESTS_FOR_REPORT[0], None, "passed", False, id="passed_stable"),
+        pytest.param(
+            TESTS_FOR_REPORT[1],
+            None,
+            "error",
+            False,
+            id="failed_fixture_no_quarantined",
+        ),
+        pytest.param(
+            TESTS_FOR_REPORT[2], None, "skipped", False, id="pytest_mark_skipped"
+        ),
+        pytest.param(
+            TESTS_FOR_REPORT[3],
+            "test_stable",
+            "error",
+            True,
+            id="failed_fixture_xfail_test",
+        ),
+        pytest.param(
+            TESTS_FOR_REPORT[4], None, "skipped", False, id="pytest_skip_inside_test"
+        ),
+        pytest.param(
+            TESTS_FOR_REPORT[5], "test_stable", "failed", True, id="xfail_hided_fail"
+        ),
+        pytest.param(
+            TESTS_FOR_REPORT[6], "test_stable", "passed", True, id="xpassed_to_pass"
+        ),
+    ],
+)
+def test_report_from_plugin(
+    pytester, make_quarantine_file, test, in_quarantine, status, quarantined_flag
+):
+
+    pytester.makeconftest(_read_real_conftest())
+    pytester.makepyfile(test)
+    make_quarantine_file(in_quarantine if in_quarantine else None)
+    # monkeypatch.setenv("RUN_ID", "run-42")
+
+    pytester.runpytest("--flaky-report=r.json")
+    path_to_report = pytester.path / "r.json"
+    report = json.loads(path_to_report.read_text())
+    assert report["tests"][0]["status"] == status
+    assert report["tests"][0]["quarantined"] == quarantined_flag

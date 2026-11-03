@@ -4,7 +4,7 @@ import pytest
 
 
 class TestPlugin:
-    def test_stable(self, request):
+    def test_stable(self):
         pass
 
     def test_flaky(self):
@@ -13,4 +13,4 @@ class TestPlugin:
 
     def test_flaky_quarantined(self):
         if randint(1, 2) == 1:
-            pytest.fail("Incorrect result")
+            pytest.fail("Incorrect result. Quarantined")
