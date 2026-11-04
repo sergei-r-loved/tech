@@ -8,8 +8,6 @@ from uuid import uuid4
 
 import pytest
 
-pytest_plugins = ["pytester"]
-
 
 @dataclass
 class Test:
@@ -100,6 +98,7 @@ def pytest_runtest_logreport(report):
         )
         RESULTS.tests.append(test)
 
+
 def pytest_sessionstart(session):
     global RESULTS
     QUARANTINED_TESTS.clear()
@@ -112,13 +111,16 @@ def pytest_sessionstart(session):
         started_at=datetime.now(timezone.utc).isoformat(),
     )
 
+
 def pytest_sessionfinish(session, exitstatus):
     path = session.config.getoption("--flaky-report")
     if not path:
         return
     target = session.config.invocation_params.dir / path
     try:
-        target.write_text(json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError as e:
+        target.write_text(
+            json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except (OSError, UnicodeDecodeError) as e:
         tr = session.config.pluginmanager.get_plugin("terminalreporter")
         tr.write_line(f"flaky-report: не записал {target}: {e}", yellow=True)
