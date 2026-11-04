@@ -68,6 +68,26 @@ TESTS_FOR_REPORT = [
     def test_stable():
         pass
     """,
+    """
+    def test_stable():
+        raise RuntimeError("стенд недоступен")
+    """,
+    """
+    import pytest
+    @pytest.fixture
+    def failed_fixture():
+        yield
+        raise RuntimeError("стенд недоступен")
+
+    def test_stable(failed_fixture):
+        pass
+    """,
+    """
+    import pytest
+    @pytest.mark.xfail(reason="JIRA-123")
+    def test_stable():
+        raise RuntimeError("известный баг")
+    """,
 ]
 
 
@@ -262,6 +282,11 @@ def test_not_collected_file_no_warning(pytester):
         pytest.param(
             TESTS_FOR_REPORT[6], "test_stable", "passed", True, id="xpassed_to_pass"
         ),
+        pytest.param(TESTS_FOR_REPORT[7], "", "failed", False, id="just_failed_test"),
+        pytest.param(TESTS_FOR_REPORT[8], "", "passed", False, id="failed_in_teardown"),
+        pytest.param(
+            TESTS_FOR_REPORT[9], None, "failed", False, id="code_xfail_not_quarantined"
+        ),
     ],
 )
 def test_report_from_plugin(
@@ -276,5 +301,56 @@ def test_report_from_plugin(
     pytester.runpytest("--flaky-report=r.json")
     path_to_report = pytester.path / "r.json"
     report = json.loads(path_to_report.read_text())
+    assert len(report["tests"]) == 1
     assert report["tests"][0]["status"] == status
     assert report["tests"][0]["quarantined"] == quarantined_flag
+
+
+def test_report_format(pytester, monkeypatch):
+
+    # run_id=os.environ.get("RUN_ID") or str(uuid4()),
+    # repo=os.environ.get("REPO"),
+    # commit=os.environ.get("GIT_COMMIT"),
+    # branch=os.environ.get("BRANCH"),
+    # ci_url=os.environ.get("CI_URL"),
+    pytester.makeconftest(_read_real_conftest())
+    pytester.makepyfile(DEFAULT_TESTS)
+    run_id = "run-42"
+    repo = "my_quarantine_repo"
+    commit = "dhasda33434hash"
+    branch = "tests_branch"
+    ci_url = "https://github.com/some_url_bla"
+    monkeypatch.setenv("RUN_ID", run_id)
+    monkeypatch.setenv("REPO", repo)
+    monkeypatch.setenv("GIT_COMMIT", commit)
+    monkeypatch.setenv("BRANCH", branch)
+    monkeypatch.setenv("CI_URL", ci_url)
+
+    pytester.runpytest("--flaky-report=r.json")
+    path_to_report = pytester.path / "r.json"
+    report = json.loads(path_to_report.read_text())
+    assert report["run_id"] == run_id
+    assert report["repo"] == repo
+    assert report["commit"] == commit
+    assert report["branch"] == branch
+    assert report["ci_url"] == ci_url
+    assert len(report["tests"]) > 0
+
+
+def test_report_unexisting_folder(pytester):
+
+    pytester.makeconftest(_read_real_conftest())
+    pytester.makepyfile("""def test_stable(): pass""")
+
+    result = pytester.runpytest("--flaky-report=nope/r.json")
+    assert result.ret == pytest.ExitCode.OK
+    result.stdout.fnmatch_lines(["*flaky-report: не записал*"])
+
+
+def test_no_report_if_no_flag(pytester):
+
+    pytester.makeconftest(_read_real_conftest())
+    pytester.makepyfile("""def test_stable(): pass""")
+
+    pytester.runpytest()
+    assert not (pytester.path / "r.json").exists()
