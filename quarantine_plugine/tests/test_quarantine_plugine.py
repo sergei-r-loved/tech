@@ -307,12 +307,6 @@ def test_report_from_plugin(
 
 
 def test_report_format(pytester, monkeypatch):
-
-    # run_id=os.environ.get("RUN_ID") or str(uuid4()),
-    # repo=os.environ.get("REPO"),
-    # commit=os.environ.get("GIT_COMMIT"),
-    # branch=os.environ.get("BRANCH"),
-    # ci_url=os.environ.get("CI_URL"),
     pytester.makeconftest(_read_real_conftest())
     pytester.makepyfile(DEFAULT_TESTS)
     run_id = "run-42"
