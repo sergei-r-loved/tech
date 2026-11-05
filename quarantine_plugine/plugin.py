@@ -46,7 +46,7 @@ def _real_status(report) -> str:
 def get_quarantine_list(source: Path) -> set[str] | None:
     try:
         lines = source.read_text(encoding="utf-8").splitlines()
-    except OSError, UnicodeDecodeError:
+    except (OSError, UnicodeDecodeError):
         return None
     lines = [line.strip() for line in lines]
     return {s for s in lines if s and not s.startswith("#")}
@@ -121,6 +121,6 @@ def pytest_sessionfinish(session, exitstatus):
         target.write_text(
             json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8"
         )
-    except (OSError, UnicodeDecodeError) as e:
+    except OSError as e:
         tr = session.config.pluginmanager.get_plugin("terminalreporter")
         tr.write_line(f"flaky-report: не записал {target}: {e}", yellow=True)

@@ -92,7 +92,7 @@ TESTS_FOR_REPORT = [
 
 
 def _read_real_conftest():
-    path_to_conftest = Path(__file__).resolve().parent.parent / "conftest.py"
+    path_to_conftest = Path(__file__).resolve().parent.parent / "plugin.py"
     return path_to_conftest.read_text("utf-8")
 
 
