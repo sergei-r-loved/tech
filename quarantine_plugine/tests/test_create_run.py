@@ -1,122 +1,166 @@
-from fastapi.testclient import TestClient
-import pytest
+import json
+from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
+
+from quarantine_plugine.server.app import CURRENT_STATE, app
+from quarantine_plugine.server.models.create_run import RunRequest
 from quarantine_plugine.test_data.create_run_data_generator import make_valid_run
-from server.app import app
 
 client = TestClient(app)
 
-TYPE_TO_MESSAGE = {"string_type": "Input should be a valid string"}
+RUNS_URL = "/v1/runs"
+RUN_URL = "/v1/runs/{run_id}"
+
+REQUIRED_RUN_FIELDS = ["tests"]
+NULLABLE_RUN_FIELDS = ["run_id", "repo", "commit", "branch", "ci_url"]
+REQUIRED_TEST_FIELDS = ["nodeid", "status", "duration", "quarantined"]
 
 
-def _message_invalid_param_type(param, input, type):
-    return {
-        "detail": [
-            {
-                "type": type,
-                "loc": ["body", param],
-                "msg": TYPE_TO_MESSAGE[type],
-                "input": input,
-            }
-        ]
-    }
+@pytest.fixture(autouse=True)
+def clean_state():
+    """Каждый тест начинает с пустого сервера - тесты не зависят от порядка."""
+    CURRENT_STATE.clear()
+    yield
+    CURRENT_STATE.clear()
 
 
-def test_create_valid_item_202():
-    response = client.post(
-        "/v1/post_run",
-        json=make_valid_run().model_dump(),
-    )
+def _valid_body() -> dict:
+    return make_valid_run().model_dump(mode="json")
+
+
+def _error_locs(response) -> list[list]:
+    return [error["loc"] for error in response.json()["detail"]]
+
+
+# --- приём и идемпотентность -------------------------------------------------
+
+
+def test_create_run_202():
+    response = client.post(RUNS_URL, json=_valid_body())
 
     assert response.status_code == 202
-    assert response.json() == {"message": "Run created"}
 
 
-def test_create_existing_item_200():
-    run = make_valid_run()
-    client.post(
-        "/v1/post_run",
-        json=run.model_dump(),
-    )
+def test_two_different_runs_202():
+    assert client.post(RUNS_URL, json=_valid_body()).status_code == 202
+    assert client.post(RUNS_URL, json=_valid_body()).status_code == 202
 
-    response = client.post(
-        "/v1/post_run",
-        json=run.model_dump(),
-    )
+
+def test_repeat_same_run_200_same_body():
+    body = _valid_body()
+
+    first = client.post(RUNS_URL, json=body)
+    second = client.post(RUNS_URL, json=body)
+
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
+def test_repeat_does_not_overwrite_run():
+    """Повтор с тем же run_id, но другими данными — храним первый, не перезаписываем."""
+    body = _valid_body()
+    client.post(RUNS_URL, json=body)
+
+    client.post(RUNS_URL, json=body | {"commit": "other-commit"})
+
+    stored = client.get(RUN_URL.format(run_id=body["run_id"])).json()
+    assert stored["commit"] == body["commit"]
+
+
+# --- чтение ------------------------------------------------------------------
+
+
+def test_get_returns_what_was_posted():
+    body = _valid_body()
+    client.post(RUNS_URL, json=body)
+
+    response = client.get(RUN_URL.format(run_id=body["run_id"]))
 
     assert response.status_code == 200
-    assert response.json() == {"message": "Run is already created"}
+    assert RunRequest.model_validate(response.json()) == RunRequest.model_validate(body)
 
 
-def test_create_two_items_202():
-    response = client.post(
-        "/v1/post_run",
-        json=make_valid_run().model_dump(),
-    )
+def test_get_unknown_run_404():
+    response = client.get(RUN_URL.format(run_id="no-such-run"))
 
-    assert response.status_code == 202
-
-    response = client.post(
-        "/v1/post_run",
-        json=make_valid_run().model_dump(),
-    )
-    assert response.status_code == 202
-    assert response.json() == {"message": "Run created"}
-
-
-def test_get_item_200():
-    run = make_valid_run()
-    response = client.post(
-        "/v1/post_run",
-        json=run.model_dump(),
-    )
-
-    assert response.status_code == 202
-
-    response = client.get(
-        f"/v1/{run.run_id}",
-    )
-    assert response.status_code == 200
-    assert response.json()["run_id"] == run.run_id
-    assert response.json()["repo"] == run.repo
-    # TODO: Остальные поля? Как то грамотно по ним проитерироваться мб
-
-
-def test_get_unexisting_item_404():
-    response = client.get(
-        "/v1/55",
-    )
     assert response.status_code == 404
-    assert response.json() == {"detail": "Item not found"}
 
 
-# TODO: продолжать ли такие тесты плодить
-@pytest.mark.parametrize(
-    "param, type, input",
-    [
-        pytest.param("run_id", "string_type", 2222, id="run_id_as_int"),
-        pytest.param("run_id", "string_type", 22.22, id="run_id_as_float"),
-        # pytest.param("run_id", "string_type", "", id="run_id_is_empty"),
-        pytest.param("repo", "string_type", 2222, id="repo_as_int"),
-        pytest.param("repo", "string_type", 22.22, id="repo_as_float"),
-        pytest.param("commit", "string_type", 2222, id="commit_as_int"),
-        pytest.param("commit", "string_type", 22.22, id="commit_as_float"),
-        pytest.param("branch", "string_type", 2222, id="branch_as_int"),
-        pytest.param("branch", "string_type", 22.22, id="branch_as_float"),
-    ],
-)
-def test_create_item_invalid_param_type_422(param, type, input):
-    run = make_valid_run().model_dump()
-    run[param] = input
+@pytest.mark.parametrize("field", REQUIRED_RUN_FIELDS)
+def test_missing_required_run_field_422(field):
+    body = _valid_body()
+    del body[field]
 
-    response = client.post(
-        "/v1/post_run",
-        json=run,
-    )
+    response = client.post(RUNS_URL, json=body)
 
     assert response.status_code == 422
-    assert response.json() == _message_invalid_param_type(param, input, type)
+    assert ["body", field] in _error_locs(response)
 
 
-# TODO: тесты на мин длину (обязательность поля) pytest.param("run_id", "string_type", "", id="run_id_is_empty"),
-# TODO:
+@pytest.mark.parametrize("field", REQUIRED_TEST_FIELDS)
+def test_missing_required_test_field_422(field):
+    body = _valid_body()
+    del body["tests"][0][field]
+
+    response = client.post(RUNS_URL, json=body)
+
+    assert response.status_code == 422
+    assert ["body", "tests", 0, field] in _error_locs(response)
+
+
+@pytest.mark.parametrize("field", NULLABLE_RUN_FIELDS)
+def test_nullable_run_field_accepts_null_202(field):
+    response = client.post(RUNS_URL, json=_valid_body() | {field: None})
+
+    assert response.status_code == 202
+
+
+def test_passed_test_without_traceback_202():
+    """У прошедшего теста плагин шлёт traceback: null."""
+    body = _valid_body()
+    body["tests"][0]["traceback"] = None
+
+    response = client.post(RUNS_URL, json=body)
+
+    assert response.status_code == 202
+
+
+def test_unknown_status_422():
+    body = _valid_body()
+    body["tests"][0]["status"] = "banana"
+
+    response = client.post(RUNS_URL, json=body)
+
+    assert response.status_code == 422
+    assert ["body", "tests", 0, "status"] in _error_locs(response)
+
+
+# --- контракт: настоящий JSON плагина -> сервер -------------------------------
+
+
+def _plugin_source() -> str:
+    return (Path(__file__).resolve().parent.parent / "plugin.py").read_text("utf-8")
+
+
+def test_server_accepts_real_plugin_report(pytester, monkeypatch):
+    for var in ("RUN_ID", "REPO", "GIT_COMMIT", "BRANCH", "CI_URL"):
+        monkeypatch.delenv(var, raising=False)
+    pytester.makeconftest(_plugin_source())
+    pytester.makepyfile(
+        """
+        def test_passes():
+            pass
+
+        def test_fails():
+            assert 1 == 2
+        """
+    )
+
+    pytester.runpytest("--flaky-report=r.json")
+    report = json.loads((pytester.path / "r.json").read_text("utf-8"))
+
+    response = client.post(RUNS_URL, json=report)
+
+    assert response.status_code == 202, response.json()

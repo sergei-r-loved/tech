@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Response
-from server.models.create_run import (
+from quarantine_plugine.server.models.create_run import (
     RunRequest,
     CreateResponse,
 )
@@ -11,7 +11,7 @@ CURRENT_STATE: dict[str, RunRequest] = {}
 
 
 @app.post(
-    "/v1/post_run",
+    "/v1/runs",
     response_model=CreateResponse,
     responses={
         202: {"model": CreateResponse, "description": "Run successfully created"},
@@ -25,10 +25,10 @@ def create_run(run: RunRequest, response: Response):
         return CreateResponse(message="Run created")
     if run.run_id in CURRENT_STATE:
         response.status_code = 200
-        return CreateResponse(message="Run is already created")
+        return CreateResponse(message="Run created")
 
 
-@app.get("/v1/{run_id}")
+@app.get("/v1/runs/{run_id}")
 def get_run_by_run_id(run_id: str):
     run = CURRENT_STATE.get(run_id, None)
     if not run:

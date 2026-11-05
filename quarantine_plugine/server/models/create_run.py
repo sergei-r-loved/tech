@@ -1,21 +1,24 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel
 
 
 class RunTest(BaseModel):
     nodeid: str
-    status: str
+    status: Literal["passed", "failed", "skipped", "error"]
     duration: float
     quarantined: bool
-    traceback: str
+    traceback: str | None = None
 
 
 class RunRequest(BaseModel):
-    run_id: str = Field(min_length=1)
-    repo: str
-    commit: str
-    branch: str
-    started_at: str
-    ci_url: str
+    run_id: str | None = None
+    repo: str | None = None
+    commit: str | None = None
+    branch: str | None = None
+    started_at: datetime
+    ci_url: str | None = None
     tests: list[RunTest]
 
 

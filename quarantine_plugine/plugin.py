@@ -116,11 +116,14 @@ def pytest_sessionfinish(session, exitstatus):
     path = session.config.getoption("--flaky-report")
     if not path:
         return
-    target = session.config.invocation_params.dir / path
+    # target = session.config.invocation_params.dir / path
     try:
-        target.write_text(
-            json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        
+        #500, 429, timeout - retry
+        # 400 no retry
+        # target.write_text(
+        #     json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8"
+        # )
     except OSError as e:
         tr = session.config.pluginmanager.get_plugin("terminalreporter")
         tr.write_line(f"flaky-report: не записал {target}: {e}", yellow=True)
