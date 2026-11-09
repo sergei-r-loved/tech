@@ -2,6 +2,13 @@ import json
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
+from quarantine_plugine.server.app import app
+
+client = TestClient(app)
+
+BASE_URL = "http://127.0.0.1:8000"
 
 DEFAULT_TESTS = """
     from random import randint
@@ -348,3 +355,20 @@ def test_no_report_if_no_flag(pytester):
 
     pytester.runpytest()
     assert not (pytester.path / "r.json").exists()
+
+
+@pytest.mark.skip(
+    "Нужен фикс, пока не додумался как отправлять не на реальный сервер и честные результаты иметь"
+)
+def test_send_report_if_flag(pytester):
+
+    pytester.makeconftest(_read_real_conftest())
+    pytester.makepyfile("""def test_stable(): pass""")
+
+    pytester.runpytest(f"--send-report={BASE_URL}/runs", "--flaky-report=r.json")
+
+    report = json.loads((pytester.path / "r.json").read_text("utf-8"))
+    stored = client.get(BASE_URL.format(run_id=report["run_id"])).json()
+
+    # assert stored == report
+    print(stored)

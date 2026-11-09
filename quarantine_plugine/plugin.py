@@ -1,12 +1,16 @@
 import json
 import os
+import time
 import warnings
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from httpx import TimeoutException, TransportError
+
+from quarantine_plugine.utils.base_http_client import BaseHttpClient
 
 
 @dataclass
@@ -33,6 +37,37 @@ APP_DIR = Path(__file__).resolve().parent
 PATH_TO_QUARANTINE = APP_DIR / "quarantine.txt"
 RESULTS: Result = Result()
 QUARANTINED_TESTS: set = set()
+ATTEMPTS_TO_POST_RUNS = 3
+BASE_SLEEP_SECONDS = 3
+CAP_SLEEP_SECONDS = 10
+
+
+def _post_result(
+    url,
+    payload,
+    transport=None,
+    timeout_sleep: float = BASE_SLEEP_SECONDS,
+    retry_attempts=ATTEMPTS_TO_POST_RUNS,
+):
+    client = transport or BaseHttpClient(url, timeout=2)
+    final_status = None
+    for attempt in range(retry_attempts):
+        try:
+            response = client.post(url + "/v1/runs", json=asdict(payload))
+            final_status = response.status_code
+            if 200 <= final_status < 300:
+                return True, final_status
+            if (
+                (500 <= final_status < 600) or final_status == 429
+            ) and attempt != retry_attempts:
+                time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
+                continue
+            if (400 <= final_status < 500) and final_status != 429:
+                return False, final_status
+        except (TimeoutException, TransportError) as e:
+            final_status = e
+            time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
+    return False, final_status
 
 
 def _real_status(report) -> str:
@@ -43,10 +78,21 @@ def _real_status(report) -> str:
     return report.outcome
 
 
+def _write_to_file(session, path):
+    target = session.config.invocation_params.dir / path
+    try:
+        target.write_text(
+            json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except (OSError, UnicodeDecodeError) as e:
+        tr = session.config.pluginmanager.get_plugin("terminalreporter")
+        tr.write_line(f"flaky-report: не записал {target}: {e}", yellow=True)
+
+
 def get_quarantine_list(source: Path) -> set[str] | None:
     try:
         lines = source.read_text(encoding="utf-8").splitlines()
-    except (OSError, UnicodeDecodeError):
+    except OSError, UnicodeDecodeError:
         return None
     lines = [line.strip() for line in lines]
     return {s for s in lines if s and not s.startswith("#")}
@@ -82,6 +128,11 @@ def pytest_addoption(parser):
     parser.addoption(
         "--flaky-report", default=None, help="куда писать JSON с результатами"
     )
+    parser.addoption(
+        "--send-report",
+        default=False,
+        help="куда отправить JSON с результатами на сервер",
+    )
 
 
 def pytest_runtest_logreport(report):
@@ -108,22 +159,19 @@ def pytest_sessionstart(session):
         commit=os.environ.get("GIT_COMMIT"),
         branch=os.environ.get("BRANCH"),
         ci_url=os.environ.get("CI_URL"),
-        started_at=datetime.now(timezone.utc).isoformat(),
+        started_at=datetime.now(UTC).isoformat(),
     )
 
 
 def pytest_sessionfinish(session, exitstatus):
     path = session.config.getoption("--flaky-report")
-    if not path:
-        return
-    # target = session.config.invocation_params.dir / path
-    try:
-        
-        #500, 429, timeout - retry
-        # 400 no retry
-        # target.write_text(
-        #     json.dumps(asdict(RESULTS), ensure_ascii=False, indent=2), encoding="utf-8"
-        # )
-    except OSError as e:
-        tr = session.config.pluginmanager.get_plugin("terminalreporter")
-        tr.write_line(f"flaky-report: не записал {target}: {e}", yellow=True)
+    url = session.config.getoption("--send-report")
+    if path:
+        _write_to_file(session, path)
+    if url and url.startswith("http"):
+        result, status = _post_result(url, RESULTS)
+        if not result:
+            tr = session.config.pluginmanager.get_plugin("terminalreporter")
+            tr.write_line(
+                f"flaky-report: не доставил результат на {path}: {status}", yellow=True
+            )

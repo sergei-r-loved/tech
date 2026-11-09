@@ -1,7 +1,8 @@
 from fastapi import FastAPI, HTTPException, Response
+
 from quarantine_plugine.server.models.create_run import (
-    RunRequest,
     CreateResponse,
+    RunRequest,
 )
 
 app = FastAPI()
@@ -14,7 +15,7 @@ CURRENT_STATE: dict[str, RunRequest] = {}
     "/v1/runs",
     response_model=CreateResponse,
     responses={
-        202: {"model": CreateResponse, "description": "Run successfully created"},
+        202: {"model": CreateResponse, "description": "Run created"},
         200: {"model": CreateResponse, "description": "Run already exists"},
     },
 )
