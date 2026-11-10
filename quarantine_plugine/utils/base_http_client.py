@@ -1,21 +1,16 @@
-import logging
 from typing import Literal
 
 import httpx
 from httpx import HTTPStatusError, Request
 
-from quarantine_plugine.utils.custom_logger import CustomLogger
-
-logger = logging.getLogger(__name__)
-custom_logger = CustomLogger(logger)
-
 
 class BaseHttpClient:
     METHOD_TYPES = Literal["GET", "POST", "PUT", "DELETE"]
 
-    def __init__(self, base_url, timeout) -> None:
+    def __init__(self, base_url, timeout, transport=None) -> None:
         self.base_url = base_url
         self.timeout = timeout
+        self.transport = transport
 
     def _get_default_headers(self):
         return {
@@ -60,9 +55,10 @@ class BaseHttpClient:
     ):
         request = self._build_request(method, endpoint, headers, params, json)
 
-        with httpx.Client(verify=True, timeout=self.timeout) as client:
+        with httpx.Client(
+            verify=True, timeout=self.timeout, transport=self.transport
+        ) as client:
             response = client.send(request)
-        custom_logger.log_request_response(request, response)
 
         if expected_status is not None and response.status_code != expected_status:
             raise HTTPStatusError(

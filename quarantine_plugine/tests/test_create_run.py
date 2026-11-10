@@ -13,8 +13,8 @@ client = TestClient(app)
 RUNS_URL = "/v1/runs"
 RUN_URL = "/v1/runs/{run_id}"
 
-REQUIRED_RUN_FIELDS = ["tests"]
-NULLABLE_RUN_FIELDS = ["run_id", "repo", "commit", "branch", "ci_url"]
+REQUIRED_RUN_FIELDS = ["run_id", "tests"]
+NULLABLE_RUN_FIELDS = ["repo", "commit", "branch", "ci_url"]
 REQUIRED_TEST_FIELDS = ["nodeid", "status", "duration", "quarantined"]
 
 

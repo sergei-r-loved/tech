@@ -12,6 +12,8 @@ from httpx import TimeoutException, TransportError
 
 from quarantine_plugine.utils.base_http_client import BaseHttpClient
 
+BASE_URL = "http://127.0.0.1:8000"
+
 
 @dataclass
 class Test:
@@ -43,30 +45,35 @@ CAP_SLEEP_SECONDS = 10
 
 
 def _post_result(
-    url,
     payload,
+    url=None,
     transport=None,
     timeout_sleep: float = BASE_SLEEP_SECONDS,
     retry_attempts=ATTEMPTS_TO_POST_RUNS,
 ):
-    client = transport or BaseHttpClient(url, timeout=2)
+    client = BaseHttpClient(url or BASE_URL, timeout=2, transport=transport)
     final_status = None
     for attempt in range(retry_attempts):
         try:
-            response = client.post(url + "/v1/runs", json=asdict(payload))
+            response = client.post("/v1/runs", json=asdict(payload))
             final_status = response.status_code
             if 200 <= final_status < 300:
                 return True, final_status
             if (
                 (500 <= final_status < 600) or final_status == 429
-            ) and attempt != retry_attempts:
+            ) and attempt != retry_attempts - 1:
                 time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
                 continue
             if (400 <= final_status < 500) and final_status != 429:
                 return False, final_status
+            else:
+                return False, final_status
         except (TimeoutException, TransportError) as e:
             final_status = e
-            time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
+            if attempt != retry_attempts - 1:
+                time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
+        except Exception as e:  # noqa: BLE001
+            final_status = e
     return False, final_status
 
 
@@ -169,9 +176,9 @@ def pytest_sessionfinish(session, exitstatus):
     if path:
         _write_to_file(session, path)
     if url and url.startswith("http"):
-        result, status = _post_result(url, RESULTS)
+        result, status = _post_result(url=url, payload=RESULTS)
         if not result:
             tr = session.config.pluginmanager.get_plugin("terminalreporter")
             tr.write_line(
-                f"flaky-report: не доставил результат на {path}: {status}", yellow=True
+                f"flaky-report: не доставил результат на {url}: {status}", yellow=True
             )

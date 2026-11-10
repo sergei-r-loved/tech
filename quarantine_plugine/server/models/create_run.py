@@ -13,7 +13,7 @@ class RunTest(BaseModel):
 
 
 class RunRequest(BaseModel):
-    run_id: str | None = None
+    run_id: str
     repo: str | None = None
     commit: str | None = None
     branch: str | None = None
