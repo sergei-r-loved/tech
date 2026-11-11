@@ -74,6 +74,7 @@ def _post_result(
                 time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
         except Exception as e:  # noqa: BLE001
             final_status = e
+            break
     return False, final_status
 
 
