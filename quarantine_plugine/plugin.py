@@ -8,7 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from httpx import TimeoutException, TransportError
+from httpx import NetworkError, RemoteProtocolError, TimeoutException
 
 from quarantine_plugine.utils.base_http_client import BaseHttpClient
 
@@ -64,11 +64,9 @@ def _post_result(
             ) and attempt != retry_attempts - 1:
                 time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))
                 continue
-            if (400 <= final_status < 500) and final_status != 429:
-                return False, final_status
-            else:
-                return False, final_status
-        except (TimeoutException, TransportError) as e:
+            return False, final_status
+        # белый список: повторяем только то, что может пройти само
+        except (TimeoutException, NetworkError, RemoteProtocolError) as e:
             final_status = e
             if attempt != retry_attempts - 1:
                 time.sleep(min(CAP_SLEEP_SECONDS, timeout_sleep * 2**attempt))

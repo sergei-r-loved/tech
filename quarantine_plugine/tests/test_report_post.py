@@ -1,10 +1,18 @@
 from dataclasses import asdict
 import json
 from unittest.mock import patch
-import warnings
 
 import pytest
-from httpx import MockTransport, Response, TimeoutException, TransportError
+from httpx import (
+    ConnectError,
+    LocalProtocolError,
+    MockTransport,
+    ReadTimeout,
+    RemoteProtocolError,
+    Response,
+    TimeoutException,
+    UnsupportedProtocol,
+)
 
 from quarantine_plugine.plugin import BASE_URL, Result, _post_result
 from quarantine_plugine.test_data.create_run_data_generator import make_valid_run_dt
@@ -140,47 +148,58 @@ def test_post_result_status(status_code, result):
     assert len(calls) == 1
 
 
+# временные: сервер лежит, завис, упал посреди ответа — повтор может помочь
 @pytest.mark.parametrize(
-    "exception, message", [(TimeoutException, "Timeout"), (TransportError, "Transport")]
-)
-def test_post_result_handle_expected_exceptions(exception, message):
-    expected_exception = exception(message)
-    handler, _ = _exception_handler_fabric(expected_exception)
-
-    response = _post_result(
-        payload=_valid_body(),
-        transport=MockTransport(handler),
-        timeout_sleep=1,
-        retry_attempts=1,
-    )
-
-    assert response == (False, expected_exception)
-
-
-def test_post_result_doesnt_fail_if_get_unexpected_exception():
-    unexpected_exception = AttributeError("Unexpected")
-    handler, calls = _exception_handler_fabric(unexpected_exception)
-
-    response = _post_result(
-        payload=_valid_body(),
-        transport=MockTransport(handler),
-        timeout_sleep=1,
-        retry_attempts=1,
-    )
-
-    assert response == (False, unexpected_exception)
-    assert len(calls) == 1
-
-
-@pytest.mark.parametrize(
-    "status_code, result, retry_attempts",
+    "exception",
     [
-        (500, False, 3),
-        (599, False, 3),
-        (429, False, 3),
+        ConnectError("Connection refused"),
+        ReadTimeout("Read timed out"),
+        RemoteProtocolError("Server disconnected"),
     ],
 )
-def test_post_result_retry(status_code, result, retry_attempts):
+def test_post_result_retries_transient_exceptions(exception):
+    handler, calls = _exception_handler_fabric(exception)
+
+    with patch("time.sleep") as mock_sleep:
+        response = _post_result(
+            payload=_valid_body(),
+            transport=MockTransport(handler),
+            timeout_sleep=1,
+            retry_attempts=3,
+        )
+    waits = [c.args[0] for c in mock_sleep.call_args_list]
+
+    assert response == (False, exception)
+    assert len(calls) == 3
+    assert waits == [1, 2]
+
+
+# постоянные: ошибка на нашей стороне, повтор ничего не исправит
+@pytest.mark.parametrize(
+    "exception",
+    [
+        UnsupportedProtocol("Request URL has an unsupported protocol 'ftp://'"),
+        LocalProtocolError("Illegal header value"),
+        AttributeError("Unexpected"),
+    ],
+)
+def test_post_result_stops_on_permanent_exceptions(exception):
+    handler, calls = _exception_handler_fabric(exception)
+
+    with patch("time.sleep") as mock_sleep:
+        response = _post_result(
+            payload=_valid_body(),
+            transport=MockTransport(handler),
+            timeout_sleep=1,
+        )
+
+    assert response == (False, exception)
+    assert len(calls) == 1
+    assert mock_sleep.call_count == 0
+
+
+@pytest.mark.parametrize("status_code", [500, 599, 429])
+def test_post_result_retry(status_code):
     handler, calls = _handler_fabric(status_code, {"message": "Run created"})
 
     with patch("time.sleep") as mock_sleep:
@@ -188,15 +207,14 @@ def test_post_result_retry(status_code, result, retry_attempts):
             payload=_valid_body(),
             transport=MockTransport(handler),
             timeout_sleep=1,
-            retry_attempts=retry_attempts,
+            retry_attempts=3,
         )
-    waits = [mock_sleep.call_args_list[x].args[0] for x in range(retry_attempts - 1)]
+    waits = [c.args[0] for c in mock_sleep.call_args_list]
 
-    assert response == (result, status_code)
-    assert mock_sleep.call_count == retry_attempts - 1
-    assert len(calls) == retry_attempts
-    assert waits == [1,2]
-    
+    assert response == (False, status_code)
+    assert len(calls) == 3
+    assert waits == [1, 2]
+
 
 def test_post_result_retry_cap():
     handler, calls = _handler_fabric(500, {"message": "Run created"})
@@ -209,9 +227,8 @@ def test_post_result_retry_cap():
             timeout_sleep=1,
             retry_attempts=retry_attempts,
         )
-    cap_wait = mock_sleep.call_args_list[-1].args[0]
+    waits = [c.args[0] for c in mock_sleep.call_args_list]
 
     assert response == (False, 500)
-    assert mock_sleep.call_count == retry_attempts - 1
     assert len(calls) == retry_attempts
-    assert cap_wait == 10
+    assert waits == [1, 2, 4, 8, 10]  # 16 обрезано потолком
