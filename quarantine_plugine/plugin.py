@@ -40,18 +40,18 @@ PATH_TO_QUARANTINE = APP_DIR / "quarantine.txt"
 RESULTS: Result = Result()
 QUARANTINED_TESTS: set = set()
 ATTEMPTS_TO_POST_RUNS = 3
-BASE_SLEEP_SECONDS = 3
+BASE_SLEEP_SECONDS = 1
 CAP_SLEEP_SECONDS = 10
 
 
 def _post_result(
     payload,
-    url=None,
+    url,
     transport=None,
     timeout_sleep: float = BASE_SLEEP_SECONDS,
     retry_attempts=ATTEMPTS_TO_POST_RUNS,
 ):
-    client = BaseHttpClient(url or BASE_URL, timeout=2, transport=transport)
+    client = BaseHttpClient(url, timeout=2, transport=transport)
     final_status = None
     for attempt in range(retry_attempts):
         try:

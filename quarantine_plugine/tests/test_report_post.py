@@ -1,5 +1,5 @@
-from dataclasses import asdict
 import json
+from dataclasses import asdict
 from unittest.mock import patch
 
 import pytest
@@ -77,6 +77,7 @@ def test_post_result_postive_after_negative():
 
     with patch("time.sleep") as mock_sleep:
         result, status = _post_result(
+            url=BASE_URL,
             payload=body,
             transport=MockTransport(
                 _negative_to_positive_handler_fabric(retry_attempts)
@@ -96,6 +97,7 @@ def test_post_result_postive_after_exception():
 
     with patch("time.sleep") as mock_sleep:
         result, status = _post_result(
+            url=BASE_URL,
             payload=body,
             transport=MockTransport(
                 _exception_to_positive_handler_fabric(retry_attempts)
@@ -114,6 +116,7 @@ def test_post_result_body_and_url():
     body = _valid_body()
 
     _post_result(
+        url=BASE_URL,
         payload=body,
         transport=MockTransport(handler),
         timeout_sleep=1,
@@ -139,6 +142,7 @@ def test_post_result_body_and_url():
 def test_post_result_status(status_code, result):
     handler, calls = _handler_fabric(status_code, {"message": "Run created"})
     response = _post_result(
+        url=BASE_URL,
         payload=_valid_body(),
         transport=MockTransport(handler),
         timeout_sleep=1,
@@ -162,6 +166,7 @@ def test_post_result_retries_transient_exceptions(exception):
 
     with patch("time.sleep") as mock_sleep:
         response = _post_result(
+            url=BASE_URL,
             payload=_valid_body(),
             transport=MockTransport(handler),
             timeout_sleep=1,
@@ -188,6 +193,7 @@ def test_post_result_stops_on_permanent_exceptions(exception):
 
     with patch("time.sleep") as mock_sleep:
         response = _post_result(
+            url=BASE_URL,
             payload=_valid_body(),
             transport=MockTransport(handler),
             timeout_sleep=1,
@@ -204,6 +210,7 @@ def test_post_result_retry(status_code):
 
     with patch("time.sleep") as mock_sleep:
         response = _post_result(
+            url=BASE_URL,
             payload=_valid_body(),
             transport=MockTransport(handler),
             timeout_sleep=1,
@@ -222,6 +229,7 @@ def test_post_result_retry_cap():
 
     with patch("time.sleep") as mock_sleep:
         response = _post_result(
+            url=BASE_URL,
             payload=_valid_body(),
             transport=MockTransport(handler),
             timeout_sleep=1,
