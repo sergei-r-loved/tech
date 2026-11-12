@@ -91,8 +91,8 @@ TESTS_FOR_REPORT = [
 ]
 
 
-def _read_real_conftest():
-    path_to_conftest = Path(__file__).resolve().parent.parent / "conftest.py"
+def _read_plugin():
+    path_to_conftest = Path(__file__).resolve().parent.parent / "plugin.py"
     return path_to_conftest.read_text("utf-8")
 
 
@@ -114,7 +114,7 @@ def make_quarantine_file(pytester, request):
 def test_quarantined(pytester, make_quarantine_file):
     """Make sure that our plugin works."""
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     make_quarantine_file()
     # Create a temporary test file
     pytester.makepyfile(DEFAULT_TESTS)
@@ -125,7 +125,7 @@ def test_quarantined(pytester, make_quarantine_file):
 
 def test_outcomes_code(pytester, make_quarantine_file):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     make_quarantine_file()
     # Create a temporary test file
     pytester.makepyfile(
@@ -148,7 +148,7 @@ def test_outcomes_code(pytester, make_quarantine_file):
 
 def test_passed_quarantined(pytester, make_quarantine_file):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     make_quarantine_file()
     # Create a temporary test file
     pytester.makepyfile(
@@ -172,7 +172,7 @@ def test_passed_quarantined(pytester, make_quarantine_file):
 
 def test_empty_quarantined(pytester):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     # Make empty qurantined file
     pytester.makefile(
         ".txt",
@@ -187,7 +187,7 @@ def test_empty_quarantined(pytester):
 
 def test_no_quarantined_file(pytester):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     # Create a temporary test file
     pytester.makepyfile(DEFAULT_TESTS)
 
@@ -198,7 +198,7 @@ def test_no_quarantined_file(pytester):
 def test_parametrized_base_quarantined(pytester, make_quarantine_file):
     """test_p в файле накрывает все параметры: test_p[a] и test_p[b]."""
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     make_quarantine_file("test_p")
     pytester.makepyfile(PARAMETRIZED_TESTS)
 
@@ -209,7 +209,7 @@ def test_parametrized_base_quarantined(pytester, make_quarantine_file):
 def test_parametrized_single_case_quarantined(pytester, make_quarantine_file):
     """test_p[a] в файле накрывает только свой параметр."""
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     make_quarantine_file("test_p[a]")
     pytester.makepyfile(PARAMETRIZED_TESTS)
 
@@ -220,7 +220,7 @@ def test_parametrized_single_case_quarantined(pytester, make_quarantine_file):
 def test_unknown_nodeid_warns(pytester, make_quarantine_file):
     """Файл собран, а теста в нём нет — опечатка или тест удалён: предупреждение."""
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     make_quarantine_file("test_typo")
     pytester.makepyfile(
         """
@@ -237,7 +237,7 @@ def test_unknown_nodeid_warns(pytester, make_quarantine_file):
 def test_not_collected_file_no_warning(pytester):
     """Тест из другого файла не выбран в этом запуске — молчим."""
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     pytester.makefile(".txt", quarantine="test_other.py::test_flaky")
     pytester.makepyfile(
         """
@@ -293,7 +293,7 @@ def test_report_from_plugin(
     pytester, make_quarantine_file, test, in_quarantine, status, quarantined_flag
 ):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     pytester.makepyfile(test)
     make_quarantine_file(in_quarantine if in_quarantine else None)
     # monkeypatch.setenv("RUN_ID", "run-42")
@@ -307,7 +307,7 @@ def test_report_from_plugin(
 
 
 def test_report_format(pytester, monkeypatch):
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     pytester.makepyfile(DEFAULT_TESTS)
     run_id = "run-42"
     repo = "my_quarantine_repo"
@@ -333,7 +333,7 @@ def test_report_format(pytester, monkeypatch):
 
 def test_report_unexisting_folder(pytester):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     pytester.makepyfile("""def test_stable(): pass""")
 
     result = pytester.runpytest("--flaky-report=nope/r.json")
@@ -343,7 +343,7 @@ def test_report_unexisting_folder(pytester):
 
 def test_no_report_if_no_flag(pytester):
 
-    pytester.makeconftest(_read_real_conftest())
+    pytester.makeconftest(_read_plugin())
     pytester.makepyfile("""def test_stable(): pass""")
 
     pytester.runpytest()
