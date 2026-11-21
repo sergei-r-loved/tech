@@ -1,9 +1,10 @@
+from psycopg import Connection
 from quarantine_plugine.server.models.create_run import RunRequest, RunTest
 
 
 class Repository:
     def __init__(self, connection) -> None:
-        self.conn = connection
+        self.conn: Connection = connection
 
     def save_run(self, run: RunRequest) -> bool:
         query = """
@@ -51,3 +52,19 @@ class Repository:
             run["tests"] = tests
             run = RunRequest.model_validate(run)
             return run
+
+    def get_flaky_by_repo(self, repo: str, days: int):
+        query = """
+        SELECT r.commit, re.nodeid
+        FROM run r JOIN result re ON r.run_id = re.run_id
+        WHERE 
+            repo = %(repo)s 
+            AND re.quarantined = False
+            AND re.status in ('passed', 'failed') 
+            AND r.started_at >= NOW() - INTERVAL '%(days)s day'
+  
+        GROUP BY r.commit, re.nodeid
+        HAVING COUNT(DISTINCT re.status) = 2;"""
+        with self.conn.cursor() as cur:
+            result = cur.execute(query, {"repo": repo, "days": days}).fetchall()
+            return [row[0] for row in result]

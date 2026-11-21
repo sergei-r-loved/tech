@@ -53,3 +53,9 @@ def get_run_by_run_id(run_id: str, repository: RepositoryDep):
     if not run:
         raise HTTPException(status_code=404, detail="Item not found")
     return run
+
+
+@app.get("/v1/repos/flaky")
+def get_flaky_tests_by_repo(repo: str, days: int = 7, *, repository: RepositoryDep):
+    run = repository.get_flaky_by_repo(repo, days)
+    return run

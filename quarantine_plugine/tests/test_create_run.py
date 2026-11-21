@@ -165,6 +165,9 @@ def test_run_no_tests_202(client):
     assert get_response.status_code == 200
     assert get_response.json()["tests"] == []
 
+# def test_get_flaky_tests_by_repo_200(client):
+
+
 # --- контракт: настоящий JSON плагина -> сервер -------------------------------
 
 
