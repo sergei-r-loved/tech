@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-import psycopg
+from psycopg.errors import UniqueViolation
 import pytest
 from fastapi.testclient import TestClient
 
@@ -32,25 +32,10 @@ NULLABLE_RUN_FIELDS = ["branch", "ci_url"]
 REQUIRED_TEST_FIELDS = ["nodeid", "status", "duration", "quarantined"]
 
 
-@pytest.fixture(autouse=True)
-def clean_state(postgres):
-    """Каждый тест начинает с пустого сервера - тесты не зависят от порядка."""
-    query = """TRUNCATE TABLE
-            run,
-            result
-            RESTART IDENTITY CASCADE;
-    """
-    conn = psycopg.connect(postgres.get_connection_url())
-
-    with conn.cursor() as cursor:
-        cursor.execute(query)
-    conn.commit()
-    conn.close()
-    yield
-
-
-def _valid_body() -> dict:
-    return make_valid_run().model_dump(mode="json")
+def _valid_body(test_count: int | None = None) -> dict:
+    return make_valid_run(test_count if test_count is not None else 1).model_dump(
+        mode="json"
+    )
 
 
 def _error_locs(response) -> list[list]:
@@ -159,6 +144,26 @@ def test_unknown_status_422(client):
     assert response.status_code == 422
     assert ["body", "tests", 0, "status"] in _error_locs(response)
 
+
+def test_rollback_if_error_404(client):
+    body = _valid_body(2)
+    body["tests"][0]["nodeid"] = "banana"
+    body["tests"][1]["nodeid"] = "banana"
+
+    with pytest.raises(UniqueViolation):
+        client.post(RUNS_URL, json=body)
+    response = client.get(RUN_URL.format(run_id=body["run_id"]))
+
+    assert response.status_code == 404
+
+def test_run_no_tests_202(client):
+    body = _valid_body(0)
+    post_response = client.post(RUNS_URL, json=body)
+    get_response = client.get(RUN_URL.format(run_id=body["run_id"]))
+
+    assert post_response.status_code == 202
+    assert get_response.status_code == 200
+    assert get_response.json()["tests"] == []
 
 # --- контракт: настоящий JSON плагина -> сервер -------------------------------
 

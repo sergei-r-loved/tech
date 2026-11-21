@@ -18,15 +18,11 @@ def postgres():
             dbname="test_db",
             driver=None,
         ) as postgres,
-        MonkeyPatch().context() as m,
+        MonkeyPatch.context() as m,
     ):
         m.setenv("DATABASE_URL", postgres.get_connection_url())
-        conn = psycopg.connect(postgres.get_connection_url())
         sql = INIT_DB.read_text(encoding="utf-8")
-
-        with conn.cursor() as cursor:
+        with psycopg.connect(postgres.get_connection_url()) as conn, conn.cursor() as cursor:
             cursor.execute(sql)
-        conn.commit()
-        conn.close()
 
         yield postgres

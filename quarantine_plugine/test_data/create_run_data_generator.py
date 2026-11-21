@@ -21,9 +21,9 @@ def make_valid_run(tests_count: int | None = None):
         repo="tech_repo",
         commit="ca82a6d",
         branch="dev/test_branch",
-        started_at=datetime.now(UTC).isoformat(),
+        started_at=datetime.now(UTC),
         ci_url="https://github.com/tech/pipeline/123123",
-        tests=[make_valid_test(i) for i in range(tests_count if tests_count else 1)],
+        tests=[make_valid_test(i) for i in range(tests_count if tests_count is not None else 1)],
     )
 
 

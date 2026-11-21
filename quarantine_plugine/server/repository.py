@@ -34,7 +34,7 @@ class Repository:
         query_run = """
         SELECT run_id, repo, commit, branch, started_at, ci_url FROM run WHERE run_id = %(run_id)s"""
         query_result = """
-        SELECT * FROM result WHERE run_id = %(run_id)s ORDER BY nodeid
+        SELECT run_id, nodeid, status, quarantined, duration, traceback FROM result WHERE run_id = %(run_id)s ORDER BY nodeid
         """
         with self.conn.cursor() as cur:
             run = cur.execute(
