@@ -67,4 +67,4 @@ class Repository:
         HAVING COUNT(DISTINCT re.status) = 2;"""
         with self.conn.cursor() as cur:
             result = cur.execute(query, {"repo": repo, "days": days}).fetchall()
-            return [row[0] for row in result]
+            return result

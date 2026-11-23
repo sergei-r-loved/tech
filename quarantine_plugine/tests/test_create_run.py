@@ -3,17 +3,9 @@ from pathlib import Path
 
 from psycopg.errors import UniqueViolation
 import pytest
-from fastapi.testclient import TestClient
 
-from quarantine_plugine.server.app import app
 from quarantine_plugine.server.models.create_run import RunRequest
 from quarantine_plugine.test_data.create_run_data_generator import make_valid_run
-
-
-@pytest.fixture
-def client(postgres):
-    with TestClient(app) as client:
-        yield client
 
 
 REPO = "tech/quarantine_plugin"
@@ -156,6 +148,7 @@ def test_rollback_if_error_404(client):
 
     assert response.status_code == 404
 
+
 def test_run_no_tests_202(client):
     body = _valid_body(0)
     post_response = client.post(RUNS_URL, json=body)
@@ -164,8 +157,6 @@ def test_run_no_tests_202(client):
     assert post_response.status_code == 202
     assert get_response.status_code == 200
     assert get_response.json()["tests"] == []
-
-# def test_get_flaky_tests_by_repo_200(client):
 
 
 # --- контракт: настоящий JSON плагина -> сервер -------------------------------

@@ -16,10 +16,10 @@ def _generate_random_repo():
     return "".join(choices(string.ascii_letters + string.digits, k=8)) + f_part
 
 
-def make_valid_test(id: int) -> RunTest:
+def make_valid_test(id: int, status: str | None = None) -> RunTest:
     return RunTest(
         nodeid=f"tests/test_example.py::test_case[{id}]",
-        status="passed",
+        status=status or "passed",
         duration=11.1,
         quarantined=False,
         traceback="some traceback bla bla",
@@ -27,7 +27,7 @@ def make_valid_test(id: int) -> RunTest:
 
 
 def make_valid_run(
-    tests_count: int | None = None, commit: str | None = None, repo: str | None = None
+    tests_count: int, commit: str | None = None, repo: str | None = None
 ):
     return RunRequest(
         run_id=str(uuid4()),
@@ -36,10 +36,7 @@ def make_valid_run(
         branch="dev/test_branch",
         started_at=datetime.now(UTC),
         ci_url="https://github.com/tech/pipeline/123123",
-        tests=[
-            make_valid_test(i)
-            for i in range(tests_count if tests_count is not None else 1)
-        ],
+        tests=[make_valid_test(i) for i in range(tests_count)],
     )
 
 
