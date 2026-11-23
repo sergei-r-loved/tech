@@ -31,6 +31,29 @@ class Repository:
             )
         return True
 
+    def save_runs(self, runs: list[RunRequest]) -> bool:
+        query = """
+            INSERT INTO run (run_id, repo, commit, started_at, branch, ci_url)
+            VALUES (%(run_id)s, %(repo)s, %(commit)s, %(started_at)s, %(branch)s, %(ci_url)s)
+            ON CONFLICT (run_id) DO NOTHING
+        """
+        runs_no_tests = [run.model_dump(exclude={"tests"}) for run in runs]
+        with self.conn.transaction(), self.conn.cursor() as cur:
+            cur.executemany(
+                query,
+                runs_no_tests,
+            )
+            tests = []
+            for t in run.tests:
+                test = t.model_dump()
+                test["run_id"] = run.run_id
+                tests.append(test)
+            cur.executemany(
+                "INSERT INTO result (run_id, nodeid, status, quarantined, duration, traceback) values (%(run_id)s, %(nodeid)s, %(status)s, %(quarantined)s, %(duration)s, %(traceback)s)",
+                tests,
+            )
+        return True
+
     def get_run_by_run_id(self, run_id: str) -> RunRequest | None:
         query_run = """
         SELECT run_id, repo, commit, branch, started_at, ci_url FROM run WHERE run_id = %(run_id)s"""
