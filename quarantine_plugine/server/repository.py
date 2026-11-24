@@ -31,29 +31,6 @@ class Repository:
             )
         return True
 
-    def save_runs(self, runs: list[RunRequest]) -> bool:
-        query = """
-            INSERT INTO run (run_id, repo, commit, started_at, branch, ci_url)
-            VALUES (%(run_id)s, %(repo)s, %(commit)s, %(started_at)s, %(branch)s, %(ci_url)s)
-            ON CONFLICT (run_id) DO NOTHING
-        """
-        runs_no_tests = [run.model_dump(exclude={"tests"}) for run in runs]
-        with self.conn.transaction(), self.conn.cursor() as cur:
-            cur.executemany(
-                query,
-                runs_no_tests,
-            )
-            tests = []
-            for t in run.tests:
-                test = t.model_dump()
-                test["run_id"] = run.run_id
-                tests.append(test)
-            cur.executemany(
-                "INSERT INTO result (run_id, nodeid, status, quarantined, duration, traceback) values (%(run_id)s, %(nodeid)s, %(status)s, %(quarantined)s, %(duration)s, %(traceback)s)",
-                tests,
-            )
-        return True
-
     def get_run_by_run_id(self, run_id: str) -> RunRequest | None:
         query_run = """
         SELECT run_id, repo, commit, branch, started_at, ci_url FROM run WHERE run_id = %(run_id)s"""
@@ -78,16 +55,21 @@ class Repository:
 
     def get_flaky_by_repo(self, repo: str, days: int):
         query = """
-        SELECT r.commit, re.nodeid
-        FROM run r JOIN result re ON r.run_id = re.run_id
-        WHERE 
-            repo = %(repo)s 
-            AND re.quarantined = False
-            AND re.status in ('passed', 'failed') 
-            AND r.started_at >= NOW() - INTERVAL '%(days)s day'
-  
-        GROUP BY r.commit, re.nodeid
-        HAVING COUNT(DISTINCT re.status) = 2;"""
+        SELECT r.commit, re.nodeid FROM run r JOIN result re ON r.run_id = re.run_id
+        WHERE r.repo = %(repo)s
+        AND re.quarantined = False
+        AND re.status = 'failed'
+        AND r.started_at >= NOW() - make_interval(days => %(days)s) 
+        AND EXISTS(
+            SELECT 1 FROM run r2 JOIN result re2 ON r2.run_id = re2.run_id
+            WHERE re2.status = 'passed'
+            AND re2.quarantined = False
+            AND r2.started_at >= NOW() - make_interval(days => %(days)s)
+            AND re2.nodeid = re.nodeid
+            AND r2.repo = r.repo
+            AND r2.commit = r.commit)
+        GROUP BY (re.nodeid, r.commit)
+        """
         with self.conn.cursor() as cur:
             result = cur.execute(query, {"repo": repo, "days": days}).fetchall()
             return result

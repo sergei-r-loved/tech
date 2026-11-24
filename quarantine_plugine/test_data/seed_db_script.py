@@ -35,6 +35,7 @@ def _push_to_db(connection, runs):
             query,
             runs_no_tests,
         )
+
         tests = []
         for t in run.tests:
             test = t.model_dump()
@@ -47,15 +48,15 @@ def _push_to_db(connection, runs):
     return True
 
 
-def _pseudo_random_data(run, tests):
+def _pseudo_random_data(run, max_run):
     now = datetime.now(UTC)
     start = now - timedelta(days=30)
-    return start + (now - start) * run / max(tests - 1, 1)
+    return start + (now - start) * (max_run - run) / max(max_run, 1)
 
 
 COMMITS: list[str] = []
-RUNS = 300
-TESTS = 3000
+RUNS = 3000
+TESTS = 8000
 REPOS = ["tech/go", "tech/front", "tech/workers"]
 STATUSES = ["passed", "failed", "skipped", "error"]
 
@@ -64,10 +65,11 @@ DB = make_db()
 ready_runs: list = []
 start = datetime.now()
 
-while RUNS:
+total_runs = RUNS
+while total_runs:
     tests_count = TESTS
     run = make_valid_run(0)
-    run.started_at = _pseudo_random_data(RUNS, TESTS)
+    run.started_at = _pseudo_random_data(total_runs, RUNS)
     run.repo = random.choice(REPOS)
     COMMITS.append(run.commit)
 
@@ -77,12 +79,12 @@ while RUNS:
 
     for i in range(tests_count + 1):
         test = make_valid_test(i)
-        if i > 2500:
+        if i > TESTS - 150:
             test.status = random.choice(STATUSES)
         tests.append(test)
     run.tests = tests
     ready_runs.append(run)
-    RUNS -= 1
+    total_runs -= 1
 
     pool = DB.pool
     with pool.connection() as conn:
