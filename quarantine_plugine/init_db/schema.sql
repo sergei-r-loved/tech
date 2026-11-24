@@ -19,3 +19,13 @@ CREATE TABLE result (
     traceback text, 
     PRIMARY KEY (run_id, nodeid)
 );
+
+CREATE INDEX run_id_nodeid_status_failed_not_quarantined
+ON result (run_id, nodeid)
+WHERE status = 'failed';
+
+CREATE INDEX repo_commit
+ON run (repo, commit);
+
+CREATE INDEX repo_started_at
+ON run (repo, started_at);
