@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from quarantine_plugine.server.models.custom_base_model import CustomBaseModel
 
 
-class RunTest(BaseModel):
+class RunTest(CustomBaseModel):
     nodeid: str
     status: Literal["passed", "failed", "skipped", "error"]
     duration: float
@@ -12,15 +12,15 @@ class RunTest(BaseModel):
     traceback: str | None = None
 
 
-class RunRequest(BaseModel):
+class RunRequest(CustomBaseModel):
     run_id: str
-    repo: str | None = None
-    commit: str | None = None
+    repo: str
+    commit: str
     branch: str | None = None
     started_at: datetime
     ci_url: str | None = None
     tests: list[RunTest]
 
 
-class CreateResponse(BaseModel):
+class CreateResponse(CustomBaseModel):
     message: str
